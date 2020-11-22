@@ -59,6 +59,7 @@ class CTGANSynthesizer(object):
         self.blackbox_model = blackbox_model
         self.preprocessing_pipeline = preprocessing_pipeline
         self.confidence_level = -1  # will set in fit
+        self.bb_loss = bb_loss
 
     @staticmethod
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
@@ -103,7 +104,8 @@ class CTGANSynthesizer(object):
                 st = ed
             elif item[1] == "softmax":
                 ed = st + item[0]
-                data_t.append(F.gumbel_softmax(data[:, st:ed], tau=0.2))
+                transformed = self._gumbel_softmax(data[:, st:ed], tau=0.2)
+                data_t.append(transformed)
                 st = ed
             else:
                 assert 0
@@ -297,9 +299,8 @@ class CTGANSynthesizer(object):
                     cross_entropy = self._cond_loss(fake, c1, m1)
 
                 if self.confidence_level != -1:
-                    gen_out = self.sample(
-                        self.batch_size
-                    )  # generate `batch_size` samples
+                    # generate `batch_size` samples
+                    gen_out = self.sample(self.batch_size)
                     loss_bb = self._calc_bb_confidence_loss(gen_out)
                     loss_g = loss_bb + cross_entropy
                 else:  # original loss
@@ -411,14 +412,18 @@ class CTGANSynthesizer(object):
         y_conf_wanted = torch.tensor(y_conf_wanted).to(self.device)
 
         # loss
-        conf_loss = torch.nn.L1Loss()(y_conf_gen, y_conf_wanted)
+        bb_loss = self._get_loss_by_name(self.bb_loss)
+        bb_loss_val = bb_loss(y_conf_gen, y_conf_wanted)
 
-        return conf_loss
+        return bb_loss_val
 
-    def _get_loss_by_name(self, loss_name):
-        if loss_name == "logloss":
+    @staticmethod
+    def _get_loss_by_name(loss_name):
+        if loss_name == "log":
             return torch.nn.BCELoss()
         elif loss_name == "l1":
             return torch.nn.L1Loss()
         elif loss_name == "l2":
             return torch.nn.L1Loss()
+        else:
+            raise ValueError(f"Unknown loss name '{loss_name}'")
