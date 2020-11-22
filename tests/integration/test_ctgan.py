@@ -16,11 +16,13 @@ from ctgan.synthesizer import CTGANSynthesizer
 
 
 def test_ctgan_dataframe():
-    data = pd.DataFrame({
-        'continuous': np.random.random(100),
-        'discrete': np.random.choice(['a', 'b', 'c'], 100)
-    })
-    discrete_columns = ['discrete']
+    data = pd.DataFrame(
+        {
+            "continuous": np.random.random(100),
+            "discrete": np.random.choice(["a", "b", "c"], 100),
+        }
+    )
+    discrete_columns = ["discrete"]
 
     ctgan = CTGANSynthesizer()
     ctgan.fit(data, discrete_columns, epochs=1)
@@ -29,15 +31,17 @@ def test_ctgan_dataframe():
 
     assert sampled.shape == (100, 2)
     assert isinstance(sampled, pd.DataFrame)
-    assert set(sampled.columns) == {'continuous', 'discrete'}
-    assert set(sampled['discrete'].unique()) == {'a', 'b', 'c'}
+    assert set(sampled.columns) == {"continuous", "discrete"}
+    assert set(sampled["discrete"].unique()) == {"a", "b", "c"}
 
 
 def test_ctgan_numpy():
-    data = pd.DataFrame({
-        'continuous': np.random.random(100),
-        'discrete': np.random.choice(['a', 'b', 'c'], 100)
-    })
+    data = pd.DataFrame(
+        {
+            "continuous": np.random.random(100),
+            "discrete": np.random.choice(["a", "b", "c"], 100),
+        }
+    )
     discrete_columns = [1]
 
     ctgan = CTGANSynthesizer()
@@ -47,28 +51,30 @@ def test_ctgan_numpy():
 
     assert sampled.shape == (100, 2)
     assert isinstance(sampled, np.ndarray)
-    assert set(np.unique(sampled[:, 1])) == {'a', 'b', 'c'}
+    assert set(np.unique(sampled[:, 1])) == {"a", "b", "c"}
 
 
 def test_log_frequency():
 
-    data = pd.DataFrame({
-        'continuous': np.random.random(1000),
-        'discrete': np.repeat(['a', 'b', 'c'], [950, 25, 25])
-    })
+    data = pd.DataFrame(
+        {
+            "continuous": np.random.random(1000),
+            "discrete": np.repeat(["a", "b", "c"], [950, 25, 25]),
+        }
+    )
 
-    discrete_columns = ['discrete']
+    discrete_columns = ["discrete"]
 
     ctgan = CTGANSynthesizer()
     ctgan.fit(data, discrete_columns, epochs=100)
 
     sampled = ctgan.sample(10000)
-    counts = sampled['discrete'].value_counts()
-    assert counts['a'] < 6500
+    counts = sampled["discrete"].value_counts()
+    assert counts["a"] < 6500
 
     ctgan = CTGANSynthesizer()
     ctgan.fit(data, discrete_columns, epochs=100, log_frequency=False)
 
     sampled = ctgan.sample(10000)
-    counts = sampled['discrete'].value_counts()
-    assert counts['a'] > 9000
+    counts = sampled["discrete"].value_counts()
+    assert counts["a"] > 9000

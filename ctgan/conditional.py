@@ -10,12 +10,12 @@ class ConditionalGenerator(object):
         max_interval = 0
         counter = 0
         for item in output_info:
-            if item[1] == 'tanh':
+            if item[1] == "tanh":
                 start += item[0]
                 skip = True
                 continue
 
-            elif item[1] == 'softmax':
+            elif item[1] == "softmax":
                 if skip:
                     skip = False
                     start += item[0]
@@ -39,11 +39,11 @@ class ConditionalGenerator(object):
         start = 0
         self.p = np.zeros((counter, max_interval))
         for item in output_info:
-            if item[1] == 'tanh':
+            if item[1] == "tanh":
                 skip = True
                 start += item[0]
                 continue
-            elif item[1] == 'softmax':
+            elif item[1] == "softmax":
                 if skip:
                     start += item[0]
                     skip = False
@@ -53,7 +53,7 @@ class ConditionalGenerator(object):
                 if log_frequency:
                     tmp = np.log(tmp + 1)
                 tmp = tmp / np.sum(tmp)
-                self.p[self.n_col, :item[0]] = tmp
+                self.p[self.n_col, : item[0]] = tmp
                 self.interval.append((self.n_opt, item[0]))
                 self.n_opt += item[0]
                 self.n_col += 1
@@ -75,8 +75,8 @@ class ConditionalGenerator(object):
         batch = batch
         idx = np.random.choice(np.arange(self.n_col), batch)
 
-        vec1 = np.zeros((batch, self.n_opt), dtype='float32')
-        mask1 = np.zeros((batch, self.n_col), dtype='float32')
+        vec1 = np.zeros((batch, self.n_opt), dtype="float32")
+        mask1 = np.zeros((batch, self.n_col), dtype="float32")
         mask1[np.arange(batch), idx] = 1
         opt1prime = self.random_choice_prob_index(idx)
         opt1 = self.interval[idx, 0] + opt1prime
@@ -88,7 +88,7 @@ class ConditionalGenerator(object):
         if self.n_col == 0:
             return None
 
-        vec = np.zeros((batch, self.n_opt), dtype='float32')
+        vec = np.zeros((batch, self.n_opt), dtype="float32")
         idx = np.random.choice(np.arange(self.n_col), batch)
         for i in range(batch):
             col = idx[i]
@@ -98,7 +98,10 @@ class ConditionalGenerator(object):
         return vec
 
     def generate_cond_from_condition_column_info(self, condition_info, batch):
-        vec = np.zeros((batch, self.n_opt), dtype='float32')
-        id = self.interval[condition_info["discrete_column_id"]][0] + condition_info["value_id"]
+        vec = np.zeros((batch, self.n_opt), dtype="float32")
+        id = (
+            self.interval[condition_info["discrete_column_id"]][0]
+            + condition_info["value_id"]
+        )
         vec[:, id] = 1
         return vec
