@@ -34,8 +34,14 @@ class CTGANSynthesizer(object):
             Number of data samples to process in each step.
     """
 
-    def __init__(self, embedding_dim=128, gen_dim=(256, 256), dis_dim=(256, 256),
-                 l2scale=1e-6, batch_size=500):
+    def __init__(
+        self,
+        embedding_dim=128,
+        gen_dim=(256, 256),
+        dis_dim=(256, 256),
+        l2scale=1e-6,
+        batch_size=500,
+    ):
 
         self.embedding_dim = embedding_dim
         self.gen_dim = gen_dim
@@ -70,8 +76,9 @@ class CTGANSynthesizer(object):
 
         if version.parse(torch.__version__) < version.parse("1.2.0"):
             for i in range(10):
-                transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard,
-                                                        eps=eps, dim=dim)
+                transformed = functional.gumbel_softmax(
+                    logits, tau=tau, hard=hard, eps=eps, dim=dim
+                )
                 if not torch.isnan(transformed).any():
                     return transformed
             raise ValueError("gumbel_softmax returning NaN.")
@@ -82,11 +89,11 @@ class CTGANSynthesizer(object):
         data_t = []
         st = 0
         for item in self.transformer.output_info:
-            if item[1] == 'tanh':
+            if item[1] == "tanh":
                 ed = st + item[0]
                 data_t.append(torch.tanh(data[:, st:ed]))
                 st = ed
-            elif item[1] == 'softmax':
+            elif item[1] == "softmax":
                 ed = st + item[0]
                 transformed = self._gumbel_softmax(data[:, st:ed], tau=0.2)
                 data_t.append(transformed)
@@ -102,11 +109,11 @@ class CTGANSynthesizer(object):
         st_c = 0
         skip = False
         for item in self.transformer.output_info:
-            if item[1] == 'tanh':
+            if item[1] == "tanh":
                 st += item[0]
                 skip = True
 
-            elif item[1] == 'softmax':
+            elif item[1] == "softmax":
                 if skip:
                     skip = False
                     st += item[0]
@@ -117,7 +124,7 @@ class CTGANSynthesizer(object):
                 tmp = functional.cross_entropy(
                     data[:, st:ed],
                     torch.argmax(c[:, st_c:ed_c], dim=1),
-                    reduction='none'
+                    reduction="none",
                 )
                 loss.append(tmp)
                 st = ed
@@ -160,33 +167,31 @@ class CTGANSynthesizer(object):
 
         if not hasattr(self, "cond_generator"):
             self.cond_generator = ConditionalGenerator(
-                train_data,
-                self.transformer.output_info,
-                log_frequency
+                train_data, self.transformer.output_info, log_frequency
             )
 
         if not hasattr(self, "generator"):
             self.generator = Generator(
-                self.embedding_dim + self.cond_generator.n_opt,
-                self.gen_dim,
-                data_dim
+                self.embedding_dim + self.cond_generator.n_opt, self.gen_dim, data_dim
             ).to(self.device)
 
         if not hasattr(self, "discriminator"):
             self.discriminator = Discriminator(
-                data_dim + self.cond_generator.n_opt,
-                self.dis_dim
+                data_dim + self.cond_generator.n_opt, self.dis_dim
             ).to(self.device)
 
         if not hasattr(self, "optimizerG"):
             self.optimizerG = optim.Adam(
-                self.generator.parameters(), lr=2e-4, betas=(0.5, 0.9),
-                weight_decay=self.l2scale
+                self.generator.parameters(),
+                lr=2e-4,
+                betas=(0.5, 0.9),
+                weight_decay=self.l2scale,
             )
 
         if not hasattr(self, "optimizerD"):
             self.optimizerD = optim.Adam(
-                self.discriminator.parameters(), lr=2e-4, betas=(0.5, 0.9))
+                self.discriminator.parameters(), lr=2e-4, betas=(0.5, 0.9)
+            )
 
         assert self.batch_size % 2 == 0
         mean = torch.zeros(self.batch_size, self.embedding_dim, device=self.device)
@@ -216,7 +221,7 @@ class CTGANSynthesizer(object):
                 fake = self.generator(fakez)
                 fakeact = self._apply_activate(fake)
 
-                real = torch.from_numpy(real.astype('float32')).to(self.device)
+                real = torch.from_numpy(real.astype("float32")).to(self.device)
 
                 if c1 is not None:
                     fake_cat = torch.cat([fakeact, c1], dim=1)
@@ -229,7 +234,8 @@ class CTGANSynthesizer(object):
                 y_real = self.discriminator(real_cat)
 
                 pen = self.discriminator.calc_gradient_penalty(
-                    real_cat, fake_cat, self.device)
+                    real_cat, fake_cat, self.device
+                )
                 loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
 
                 self.optimizerD.zero_grad()
@@ -267,9 +273,11 @@ class CTGANSynthesizer(object):
                 loss_g.backward()
                 self.optimizerG.step()
 
-            print("Epoch %d, Loss G: %.4f, Loss D: %.4f" %
-                  (self.trained_epoches, loss_g.detach().cpu(), loss_d.detach().cpu()),
-                  flush=True)
+            print(
+                "Epoch %d, Loss G: %.4f, Loss D: %.4f"
+                % (self.trained_epoches, loss_g.detach().cpu(), loss_d.detach().cpu()),
+                flush=True,
+            )
 
     def sample(self, n, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
@@ -292,9 +300,13 @@ class CTGANSynthesizer(object):
 
         if condition_column is not None and condition_value is not None:
             condition_info = self.transformer.covert_column_name_value_to_id(
-                condition_column, condition_value)
-            global_condition_vec = self.cond_generator.generate_cond_from_condition_column_info(
-                condition_info, self.batch_size)
+                condition_column, condition_value
+            )
+            global_condition_vec = (
+                self.cond_generator.generate_cond_from_condition_column_info(
+                    condition_info, self.batch_size
+                )
+            )
         else:
             global_condition_vec = None
 

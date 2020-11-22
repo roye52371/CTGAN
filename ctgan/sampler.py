@@ -13,10 +13,10 @@ class Sampler(object):
         st = 0
         skip = False
         for item in output_info:
-            if item[1] == 'tanh':
+            if item[1] == "tanh":
                 st += item[0]
                 skip = True
-            elif item[1] == 'softmax':
+            elif item[1] == "softmax":
                 if skip:
                     skip = False
                     st += item[0]

@@ -30,20 +30,20 @@ class DataTransformer(object):
     def _fit_continuous(self, column, data):
         gm = BayesianGaussianMixture(
             self.n_clusters,
-            weight_concentration_prior_type='dirichlet_process',
+            weight_concentration_prior_type="dirichlet_process",
             weight_concentration_prior=0.001,
-            n_init=1
+            n_init=1,
         )
         gm.fit(data)
         components = gm.weights_ > self.epsilon
         num_components = components.sum()
 
         return {
-            'name': column,
-            'model': gm,
-            'components': components,
-            'output_info': [(1, 'tanh'), (num_components, 'softmax')],
-            'output_dimensions': 1 + num_components,
+            "name": column,
+            "model": gm,
+            "components": components,
+            "output_info": [(1, "tanh"), (num_components, "softmax")],
+            "output_dimensions": 1 + num_components,
         }
 
     def _fit_discrete(self, column, data):
@@ -53,10 +53,10 @@ class DataTransformer(object):
         categories = len(set(data))
 
         return {
-            'name': column,
-            'encoder': ohe,
-            'output_info': [(categories, 'softmax')],
-            'output_dimensions': categories
+            "name": column,
+            "encoder": ohe,
+            "output_info": [(categories, "softmax")],
+            "output_dimensions": categories,
         }
 
     def fit(self, data, discrete_columns=tuple()):
@@ -78,13 +78,13 @@ class DataTransformer(object):
             else:
                 meta = self._fit_continuous(column, column_data)
 
-            self.output_info += meta['output_info']
-            self.output_dimensions += meta['output_dimensions']
+            self.output_info += meta["output_info"]
+            self.output_dimensions += meta["output_dimensions"]
             self.meta.append(meta)
 
     def _transform_continuous(self, column_meta, data):
-        components = column_meta['components']
-        model = column_meta['model']
+        components = column_meta["components"]
+        model = column_meta["model"]
 
         means = model.means_.reshape((1, self.n_clusters))
         stds = np.sqrt(model.covariances_).reshape((1, self.n_clusters))
@@ -96,7 +96,7 @@ class DataTransformer(object):
         features = features[:, components]
         probs = probs[:, components]
 
-        opt_sel = np.zeros(len(data), dtype='int')
+        opt_sel = np.zeros(len(data), dtype="int")
         for i in range(len(data)):
             pp = probs[i] + 1e-6
             pp = pp / pp.sum()
@@ -104,14 +104,14 @@ class DataTransformer(object):
 
         idx = np.arange((len(features)))
         features = features[idx, opt_sel].reshape([-1, 1])
-        features = np.clip(features, -.99, .99)
+        features = np.clip(features, -0.99, 0.99)
 
         probs_onehot = np.zeros_like(probs)
         probs_onehot[np.arange(len(probs)), opt_sel] = 1
         return [features, probs_onehot]
 
     def _transform_discrete(self, column_meta, data):
-        encoder = column_meta['encoder']
+        encoder = column_meta["encoder"]
         return encoder.transform(data[:, 0])
 
     def transform(self, data):
@@ -120,8 +120,8 @@ class DataTransformer(object):
 
         values = []
         for meta in self.meta:
-            column_data = data[[meta['name']]].values
-            if 'model' in meta:
+            column_data = data[[meta["name"]]].values
+            if "model" in meta:
                 values += self._transform_continuous(meta, column_data)
             else:
                 values.append(self._transform_discrete(meta, column_data))
@@ -129,8 +129,8 @@ class DataTransformer(object):
         return np.concatenate(values, axis=1).astype(float)
 
     def _inverse_transform_continuous(self, meta, data, sigma):
-        model = meta['model']
-        components = meta['components']
+        model = meta["model"]
+        components = meta["components"]
 
         u = data[:, 0]
         v = data[:, 1:]
@@ -152,7 +152,7 @@ class DataTransformer(object):
         return column
 
     def _inverse_transform_discrete(self, meta, data):
-        encoder = meta['encoder']
+        encoder = meta["encoder"]
         return encoder.reverse_transform(data)
 
     def inverse_transform(self, data, sigmas):
@@ -160,17 +160,17 @@ class DataTransformer(object):
         output = []
         column_names = []
         for meta in self.meta:
-            dimensions = meta['output_dimensions']
-            columns_data = data[:, start:start + dimensions]
+            dimensions = meta["output_dimensions"]
+            columns_data = data[:, start : start + dimensions]
 
-            if 'model' in meta:
+            if "model" in meta:
                 sigma = sigmas[start] if sigmas else None
                 inverted = self._inverse_transform_continuous(meta, columns_data, sigma)
             else:
                 inverted = self._inverse_transform_discrete(meta, columns_data)
 
             output.append(inverted)
-            column_names.append(meta['name'])
+            column_names.append(meta["name"])
             start += dimensions
 
         output = np.column_stack(output)
@@ -197,7 +197,7 @@ class DataTransformer(object):
         return {
             "discrete_column_id": discrete_counter,
             "column_id": column_id,
-            "value_id": np.argmax(info["encoder"].transform(np.array([value]))[0])
+            "value_id": np.argmax(info["encoder"].transform(np.array([value]))[0]),
         }
 
     @classmethod
