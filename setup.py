@@ -5,18 +5,20 @@
 
 from setuptools import setup, find_packages
 
-with open("README.md") as readme_file:
+with open("README.md", encoding="utf-8") as readme_file:
     readme = readme_file.read()
 
-with open("HISTORY.md") as history_file:
+with open("HISTORY.md", encoding="utf-8") as history_file:
     history = history_file.read()
 
 install_requires = [
     "torch<2,>=1.0",
     "torchvision<1,>=0.4.2",
     "scikit-learn<0.24,>=0.21",
+    "rdt>=0.2.7,<0.3",
     "numpy<2,>=1.17.4",
-    "pandas<2,>=0.24",
+    "pandas<1.1.5,>=0.24",
+    "packaging",
 ]
 
 setup_requires = [
@@ -51,6 +53,7 @@ development_requires = [
     # Advanced testing
     "coverage>=4.5.1,<6",
     "tox>=2.9.1,<4",
+    "invoke",
 ]
 
 setup(
@@ -62,7 +65,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Natural Language :: English",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
@@ -84,11 +86,11 @@ setup(
     keywords="ctgan CTGAN",
     name="ctgan",
     packages=find_packages(include=["ctgan", "ctgan.*"]),
-    python_requires=">=3.5,<3.9",
+    python_requires=">=3.6,<3.9",
     setup_requires=setup_requires,
     test_suite="tests",
     tests_require=tests_require,
     url="https://github.com/sdv-dev/CTGAN",
-    version="0.2.2.dev2",
+    version="0.2.3.dev0",
     zip_safe=False,
 )
