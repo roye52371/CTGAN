@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
 
 def get_preprocessor(X, categorical_features):
@@ -76,3 +76,34 @@ def plot_losses(hist, title):
     plt.ylabel("Loss", fontsize=20)
     plt.legend(loc="upper right", fontsize=10)
     plt.show()
+
+
+def calc_scores(gen_data_above_c, X_train):
+    """
+    Calculate euclidean_distances_scores and cosine_similarities_scores between
+    the generated samples above confidence level c, and the training data.
+
+     Args:
+         X_train:
+            training data with shape (N, D)
+        gen_data_above_c:
+            generated samples above confidence level c with shape (G, D)
+
+    Output:
+        two dicts with metric scores s.t len(dicts.values()) = G
+
+    """
+    euclidean_distances_scores = {}
+    cosine_similarities_scores = {}
+
+    # X_train.shape = (N, D)
+    for index, row in gen_data_above_c.iterrows():
+        row_np = row.to_numpy().reshape(1, -1)
+        # row_np.shape = (1, D)
+        d_euclidean = euclidean_distances(row_np, X_train)
+        d_cosine = cosine_similarity(row_np, X_train)
+        # d.shape = (1, N)
+        euclidean_distances_scores[index] = d_euclidean.mean()
+        cosine_similarities_scores[index] = d_cosine.mean()
+
+    return euclidean_distances_scores, cosine_similarities_scores

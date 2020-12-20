@@ -231,58 +231,61 @@ class CTGANSynthesizer(object):
         mean = torch.zeros(self.batch_size, self.embedding_dim, device=self.device)
         std = mean + 1
 
-        steps_per_epoch = max(len(train_data) // self.batch_size, 1)
+        # steps_per_epoch = max(len(train_data) // self.batch_size, 1)
+        steps_per_epoch = 10  # magic number decided with Gilad. feel free to change it
 
         # Eli: start training loop
         for i in range(epochs):
             self.trained_epoches += 1
             for id_ in range(steps_per_epoch):
 
-                for n in range(self.discriminator_steps):
-                    fakez = torch.normal(mean=mean, std=std)
+                if self.confidence_level == -1:
+                    # discriminator loop
+                    for n in range(self.discriminator_steps):
+                        fakez = torch.normal(mean=mean, std=std)
 
-                    condvec = self.cond_generator.sample(self.batch_size)
-                    if condvec is None:
-                        c1, m1, col, opt = None, None, None, None
-                        real = data_sampler.sample(self.batch_size, col, opt)
-                    else:
-                        c1, m1, col, opt = condvec
-                        c1 = torch.from_numpy(c1).to(self.device)
-                        m1 = torch.from_numpy(m1).to(self.device)
-                        fakez = torch.cat([fakez, c1], dim=1)
+                        condvec = self.cond_generator.sample(self.batch_size)
+                        if condvec is None:
+                            c1, m1, col, opt = None, None, None, None
+                            real = data_sampler.sample(self.batch_size, col, opt)
+                        else:
+                            c1, m1, col, opt = condvec
+                            c1 = torch.from_numpy(c1).to(self.device)
+                            m1 = torch.from_numpy(m1).to(self.device)
+                            fakez = torch.cat([fakez, c1], dim=1)
 
-                        perm = np.arange(self.batch_size)
-                        np.random.shuffle(perm)
-                        real = data_sampler.sample(
-                            self.batch_size, col[perm], opt[perm]
+                            perm = np.arange(self.batch_size)
+                            np.random.shuffle(perm)
+                            real = data_sampler.sample(
+                                self.batch_size, col[perm], opt[perm]
+                            )
+                            c2 = c1[perm]
+
+                        fake = self.generator(fakez)
+                        fakeact = self._apply_activate(fake)
+
+                        real = torch.from_numpy(real.astype("float32")).to(self.device)
+
+                        if c1 is not None:
+                            fake_cat = torch.cat([fakeact, c1], dim=1)
+                            real_cat = torch.cat([real, c2], dim=1)
+                        else:
+                            real_cat = real
+                            fake_cat = fake
+
+                        y_fake = self.discriminator(fake_cat)
+                        y_real = self.discriminator(real_cat)
+
+                        pen = self.discriminator.calc_gradient_penalty(
+                            real_cat, fake_cat, self.device
                         )
-                        c2 = c1[perm]
+                        loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
 
-                    fake = self.generator(fakez)
-                    fakeact = self._apply_activate(fake)
-
-                    real = torch.from_numpy(real.astype("float32")).to(self.device)
-
-                    if c1 is not None:
-                        fake_cat = torch.cat([fakeact, c1], dim=1)
-                        real_cat = torch.cat([real, c2], dim=1)
-                    else:
-                        real_cat = real
-                        fake_cat = fake
-
-                    y_fake = self.discriminator(fake_cat)
-                    y_real = self.discriminator(real_cat)
-
-                    pen = self.discriminator.calc_gradient_penalty(
-                        real_cat, fake_cat, self.device
-                    )
-                    loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
-
-                    if self.confidence_level == -1:  # without bb loss
-                        self.optimizerD.zero_grad()
-                        pen.backward(retain_graph=True)
-                        loss_d.backward()
-                        self.optimizerD.step()
+                        if self.confidence_level == -1:  # without bb loss
+                            self.optimizerD.zero_grad()
+                            pen.backward(retain_graph=True)
+                            loss_d.backward()
+                            self.optimizerD.step()
 
                 fakez = torch.normal(mean=mean, std=std)
                 condvec = self.cond_generator.sample(self.batch_size)
@@ -389,7 +392,7 @@ class CTGANSynthesizer(object):
 
         data = np.concatenate(data, axis=0)
         data = data[:n]
-
+        # return data
         return self.transformer.inverse_transform(data, None)
 
     def save(self, path):
@@ -418,6 +421,7 @@ class CTGANSynthesizer(object):
         return model
 
     def _calc_bb_confidence_loss(self, gen_out):
+
         y_prob = self.blackbox_model.predict_proba(gen_out)
         y_conf_gen = y_prob[:, 0]  # confidence scores
 
