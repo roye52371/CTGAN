@@ -3,6 +3,8 @@ import torch
 from packaging import version
 from torch import optim
 from torch.nn import functional
+import torch.nn as nn
+
 
 from ctgan.conditional import ConditionalGenerator
 from ctgan.models import Discriminator, Generator
@@ -440,5 +442,27 @@ class CTGANSynthesizer(object):
             return torch.nn.L1Loss()
         elif loss_name == "l2":
             return torch.nn.L1Loss()
+        elif loss_name == "focal":
+            return WeightedFocalLoss()
         else:
             raise ValueError(f"Unknown loss name '{loss_name}'")
+
+
+class WeightedFocalLoss(nn.Module):
+    "Non weighted version of Focal Loss"
+
+    def __init__(self, alpha=0.25, gamma=2):
+        super(WeightedFocalLoss, self).__init__()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.alpha = torch.tensor([alpha, 1 - alpha]).to(device)
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        BCE_loss = functional.binary_cross_entropy_with_logits(
+            inputs, targets, reduction="none"
+        )
+        targets = targets.type(torch.long)
+        at = self.alpha.gather(0, targets.data.view(-1))
+        pt = torch.exp(-BCE_loss)
+        F_loss = at * (1 - pt) ** self.gamma * BCE_loss
+        return F_loss.mean()
