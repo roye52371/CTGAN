@@ -51,6 +51,11 @@ def sparse_to_df(sparse_mat):
     return pd.DataFrame.sparse.from_spmatrix(sparse_mat)
 
 
+def get_scaler(preprocessor):
+    scaler = preprocessor.transformers_[0][1].named_steps['scaler']
+    return scaler
+
+
 def get_noise_features(X, categorical_features):
     preprocessor = get_preprocessor(X, categorical_features)
     x_preprocessed = preprocessor.fit_transform(X)
@@ -78,10 +83,10 @@ def plot_losses(hist, title):
     plt.show()
 
 
-def calc_scores(gen_data_above_c, X_train):
+def calc_similarities(gen_data_above_c, X_train):
     """
-    Calculate euclidean_distances_scores and cosine_similarities_scores between
-    the generated samples above confidence level c, and the training data.
+    Calculate cosine similarities between the 
+    generated samples above confidence level c, and the training data.
 
      Args:
          X_train:
@@ -90,20 +95,30 @@ def calc_scores(gen_data_above_c, X_train):
             generated samples above confidence level c with shape (G, D)
 
     Output:
-        two dicts with metric scores s.t len(dicts.values()) = G
+        Dict that maps: gen_sample_above_c -> (most_similiar_sample_x_train, cosine_score)
 
     """
-    euclidean_distances_scores = {}
-    cosine_similarities_scores = {}
+    cosine_scores = {}
 
     # X_train.shape = (N, D)
     for index, row in gen_data_above_c.iterrows():
         row_np = row.to_numpy().reshape(1, -1)
         # row_np.shape = (1, D)
-        d_euclidean = euclidean_distances(row_np, X_train)
-        d_cosine = cosine_similarity(row_np, X_train)
+        d_cosine = cosine_similarity(row_np, X_train).squeeze()
         # d.shape = (1, N)
-        euclidean_distances_scores[index] = d_euclidean.mean()
-        cosine_similarities_scores[index] = d_cosine.mean()
+        most_similar_sample_idx = np.argmax(d_cosine)
+        similarity_score = round(d_cosine[most_similar_sample_idx], 3)
+        cosine_scores[index] = (most_similar_sample_idx, similarity_score)
+        
+    return cosine_scores
 
-    return euclidean_distances_scores, cosine_similarities_scores
+
+def plot_confidence_levels(y_conf_gen, fig_title):
+    counts = pd.value_counts(y_conf_gen, bins=10, sort=False)
+    plt.figure()
+    ax = counts.plot.bar(rot=0, grid=True, color='#607c8e', figsize=(15,5))
+    ax.set_xticklabels([str(interval) for interval in counts.index], fontsize=11)
+    ax.set_ylabel('Frequency', fontsize=15)
+
+    ax.set_title(fig_title, fontsize=25)
+    plt.show()
