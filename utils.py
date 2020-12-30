@@ -4,11 +4,13 @@ import matplotlib.pyplot as plt
 
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn import preprocessing
+
+
+DATA_PATH = "./data/"
+ToEncodeLabelDatasets = ["ailerons", "diabetes", "wind"]
 
 
 def get_preprocessor(X, categorical_features):
@@ -52,7 +54,7 @@ def sparse_to_df(sparse_mat):
 
 
 def get_scaler(preprocessor):
-    scaler = preprocessor.transformers_[0][1].named_steps['scaler']
+    scaler = preprocessor.transformers_[0][1].named_steps["scaler"]
     return scaler
 
 
@@ -85,7 +87,7 @@ def plot_losses(hist, title):
 
 def calc_similarities(gen_data_above_c, X_train):
     """
-    Calculate cosine similarities between the 
+    Calculate cosine similarities between the
     generated samples above confidence level c, and the training data.
 
      Args:
@@ -109,16 +111,52 @@ def calc_similarities(gen_data_above_c, X_train):
         most_similar_sample_idx = np.argmax(d_cosine)
         similarity_score = round(d_cosine[most_similar_sample_idx], 3)
         cosine_scores[index] = (most_similar_sample_idx, similarity_score)
-        
+
     return cosine_scores
 
 
 def plot_confidence_levels(y_conf_gen, fig_title):
     counts = pd.value_counts(y_conf_gen, bins=10, sort=False)
     plt.figure()
-    ax = counts.plot.bar(rot=0, grid=True, color='#607c8e', figsize=(15,5))
+    ax = counts.plot.bar(rot=0, grid=True, color="#607c8e", figsize=(15, 5))
     ax.set_xticklabels([str(interval) for interval in counts.index], fontsize=11)
-    ax.set_ylabel('Frequency', fontsize=15)
+    ax.set_ylabel("Frequency", fontsize=15)
 
     ax.set_title(fig_title, fontsize=25)
     plt.show()
+
+
+def plot_similarities_dist(gen_data_above_c, X_train):
+    for index, row in gen_data_above_c.iterrows():
+        row_np = row.to_numpy().reshape(1, -1)
+        d_cosine = cosine_similarity(row_np, X_train).squeeze()
+
+        plt.figure(figsize=(15, 5))
+        plt.hist(d_cosine, color="#607c8e", edgecolor="black", bins=35)
+        plt.title(f"Similarities Distribution (sample {index})", fontsize=25)
+        plt.ylabel("Frequency", fontsize=15)
+        plt.xlabel("Similarity", fontsize=15)
+        plt.xticks(fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.show()
+        print("\n")
+
+
+def read_data(data_name):
+    """
+    read data and label encode the labels
+    :param data_name: dataset name (from data folder)
+    :return: X, y (data and labels)
+    """
+    data = pd.read_csv(f"{DATA_PATH}/{data_name}.csv").to_numpy()
+    X = data[:, :-1]
+    y = data[:, -1:].squeeze()
+    label_encoder = None
+
+    if data_name in ToEncodeLabelDatasets:
+        label_encoder = preprocessing.LabelEncoder()
+        y = label_encoder.fit_transform(y)
+    
+    if(len(np.unique(y)) !=2):
+        raise ValueError(f"'{data_name}' is not binary classification")
+    return X, y, label_encoder
