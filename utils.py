@@ -156,7 +156,7 @@ def read_data(data_name):
     if data_name in ToEncodeLabelDatasets:
         label_encoder = preprocessing.LabelEncoder()
         y = label_encoder.fit_transform(y)
-    
-    if(len(np.unique(y)) !=2):
+
+    if len(np.unique(y)) != 2:
         raise ValueError(f"'{data_name}' is not binary classification")
     return X, y, label_encoder
