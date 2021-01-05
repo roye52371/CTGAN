@@ -426,7 +426,11 @@ class CTGANSynthesizer(object):
         y_conf_gen = y_prob[:, 0]  # confidence scores
 
         # create vector with the same size of y_confidence filled with `confidence_level` values
-        y_conf_wanted = np.full(len(y_conf_gen), self.confidence_level)
+        if isinstance(self.confidence_level, list):
+            conf = np.random.choice(self.confidence_level)
+        else:
+            conf = self.confidence_level
+        y_conf_wanted = np.full(len(y_conf_gen), conf)
 
         # to tensor
         y_conf_gen = torch.tensor(y_conf_gen, requires_grad=True).to(self.device)
