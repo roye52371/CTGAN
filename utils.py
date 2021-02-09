@@ -8,16 +8,19 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn import preprocessing
 
+from collections import defaultdict
+
+
 
 DATA_PATH = "./data/"
-ToEncodeLabelDatasets = ["ailerons", "diabetes", "wind"]
+ToEncodeLabelDatasets = ["ailerons", "diabetes", "wind", "adult"]
 
 
 def get_preprocessor(X, categorical_features):
     """
     The numeric data is standard-scaled after mean-imputation,
     while the categorical data is one-hot encoded after imputing missing values
-    with a new category ('missing').
+    with a new category ('missing').-*
     """
     if isinstance(X, pd.DataFrame):
         numeric_features = list(set(X.columns) - set(categorical_features))
@@ -142,13 +145,15 @@ def plot_similarities_dist(gen_data_above_c, X_train):
         print("\n")
 
 
-def read_data(data_name):
+def read_data(data_name, data=None):
     """
     read data and label encode the labels
     :param data_name: dataset name (from data folder)
+    :param data: data which already loaded using pd.read_csv (adult for example)
     :return: X, y (data and labels)
     """
-    data = pd.read_csv(f"{DATA_PATH}/{data_name}.csv").to_numpy()
+    if data is None:
+        data = pd.read_csv(f"{DATA_PATH}/{data_name}.csv").to_numpy()
     X = data[:, :-1]
     y = data[:, -1:].squeeze()
     label_encoder = None
@@ -160,3 +165,83 @@ def read_data(data_name):
     if len(np.unique(y)) != 2:
         raise ValueError(f"'{data_name}' is not binary classification")
     return X, y, label_encoder
+
+
+def calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train):
+    count = 0
+    
+    for index, row in X_train.iterrows():
+        row_np = row.to_numpy().reshape(1, -1)
+        # row_np.shape = (1, D)
+        d_cosine = cosine_similarity(row_np, gen_data).squeeze()
+        # d.shape = (1, N)
+        ind = np.nonzero(d_cosine >= sim_threshold)[0]
+        if len(ind) == 0: # no samples with similarity greater then sim_threshold
+            continue
+        
+        conf_diff = y_conf_gen[ind] - y_conf_train[ind]
+        if np.any(np.abs(conf_diff) <= conf_diff_threshold):
+            count += 1
+
+    coverage = (count / X_train.shape[0]) * 100
+    return round(coverage, 4)
+
+
+def calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train):
+    count = 0
+    
+    for index, row in gen_data.iterrows():
+        row_np = row.to_numpy().reshape(1, -1)
+        # row_np.shape = (1, D)
+        d_cosine = cosine_similarity(row_np, X_train).squeeze()
+        # d.shape = (1, N)
+        ind = np.nonzero(d_cosine >= sim_threshold)[0]
+        if len(ind) == 0: # no samples with similarity greater then sim_threshold
+            continue
+        
+        conf_diff = y_conf_gen[ind] - y_conf_train[ind]
+        if np.any(np.abs(conf_diff) <= conf_diff_threshold):
+            count += 1
+
+    precision = (count / gen_data.shape[0]) * 100
+    return round(precision, 4)
+    
+
+def table(gen_data, X_train, y_conf_gen, y_conf_train):
+    similarity_thresholds = [0.8, 0.85, 0.9, 0.95, 0.99]
+    conf_diff_thresholds = [0.01, 0.05, 0.1, 0.15, 0.2]
+    data = defaultdict(list)
+    
+    for sim_threshold in similarity_thresholds:
+        for conf_diff_threshold in conf_diff_thresholds:
+            coverage = calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
+            precision = calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
+            data[sim_threshold].append(f"{coverage} | {precision}")
+
+    results = pd.DataFrame.from_dict(data, orient='index', columns=conf_diff_thresholds)
+    return results
+
+
+# generate samples until you have the same number of samples as those
+# of the training set and in the same confidence distribution
+def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
+    train_bucktes = pd.value_counts(y_conf_train, bins=10, sort=False)
+    idxs, freqs = train_bucktes.index, train_bucktes.values
+    ans = []
+
+    for sample_idx, sample_conf in enumerate(y_conf_gen):
+
+        # find interval index which contains the sample_conf (-1 if not found)
+        interval_idx = np.nonzero(idxs.contains(sample_conf))[0]
+
+        # value not fould (empty list of indices)
+        if len(interval_idx) == 0:
+            continue 
+
+        # check if the bucket is not full
+        interval_idx = interval_idx[0]
+        if freqs[interval_idx] > 0:
+            ans.append(sample_idx)
+            freqs[interval_idx] -= 1 
+            
+    return ans
