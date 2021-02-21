@@ -17,11 +17,6 @@ ToEncodeLabelDatasets = ["ailerons", "diabetes", "wind", "adult"]
 
 
 def get_preprocessor(X, categorical_features):
-    """
-    The numeric data is standard-scaled after mean-imputation,
-    while the categorical data is one-hot encoded after imputing missing values
-    with a new category ('missing').-*
-    """
     if isinstance(X, pd.DataFrame):
         numeric_features = list(set(X.columns) - set(categorical_features))
     else:
@@ -222,9 +217,11 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
     return results
 
 
-# generate samples until you have the same number of samples as those
-# of the training set and in the same confidence distribution
 def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
+    """
+    generate samples until you have the same number of samples as those
+    of the training set and in the same confidence distribution
+    """
     train_bucktes = pd.value_counts(y_conf_train, bins=10, sort=False)
     idxs, freqs = train_bucktes.index, train_bucktes.values
     ans = []
