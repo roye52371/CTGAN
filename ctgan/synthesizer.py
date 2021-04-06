@@ -11,6 +11,8 @@ from ctgan.models import Discriminator, Generator
 from ctgan.sampler import Sampler
 from ctgan.transformer import DataTransformer
 
+#git try to commit changes
+#remember to add confidence level as input ti CTGAN Synthesizer
 
 class CTGANSynthesizer(object):
     """Conditional Table GAN Synthesizer.
