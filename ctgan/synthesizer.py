@@ -59,6 +59,7 @@ class CTGANSynthesizer(object):
         blackbox_model=None,
         preprocessing_pipeline=None,
         bb_loss="logloss",
+        confidence_levels = [], #default value if no confidence given
     ):
 
         self.embedding_dim = embedding_dim
@@ -73,8 +74,9 @@ class CTGANSynthesizer(object):
         self.discriminator_steps = discriminator_steps
         self.blackbox_model = blackbox_model
         self.preprocessing_pipeline = preprocessing_pipeline
-        self.confidence_level = -1  # will set in fit
+        self.confidence_levels = confidence_levels #set here not in fit
         self.bb_loss = bb_loss
+        #print("self.confidence_levels")
 
     @staticmethod
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
@@ -166,7 +168,6 @@ class CTGANSynthesizer(object):
         train_data,
         discrete_columns=tuple(),
         epochs=300,
-        confidence_level=-1,
         verbose=True,
         gen_lr=2e-4,
     ):
@@ -184,12 +185,12 @@ class CTGANSynthesizer(object):
             epochs (int):
                 Number of training epochs. Defaults to 300.
         """
+        """
         self.confidence_level = confidence_level
         loss_other_name = "loss_bb" if confidence_level != -1 else "loss_d"
         history = {"loss_g": [], loss_other_name: []}
-
+        """
         # Eli: add Mode-specific Normalization
-
         if not hasattr(self, "transformer"):
             self.transformer = DataTransformer()
             self.transformer.fit(train_data, discrete_columns)
@@ -236,107 +237,114 @@ class CTGANSynthesizer(object):
         # steps_per_epoch = max(len(train_data) // self.batch_size, 1)
         steps_per_epoch = 10  # magic number decided with Gilad. feel free to change it
 
+        loss_other_name = "loss_bb" if self.confidence_levels != [] else "loss_d"
+        allhist = {"confidence_levels_history": []}
         # Eli: start training loop
-        for i in range(epochs):
-            self.trained_epoches += 1
-            for id_ in range(steps_per_epoch):
+        for current_conf_level in self.confidence_levels:
+            #need to change, if non confidence give, aka []) no loop will run
+            #so if no conf, need to jump over conf loop
+            history = {"confidence_level": current_conf_level, "loss_g": [], loss_other_name: []}
+            for i in range(epochs):
+                self.trained_epoches += 1
+                for id_ in range(steps_per_epoch):
 
-                if self.confidence_level == -1:
-                    # discriminator loop
-                    for n in range(self.discriminator_steps):
-                        fakez = torch.normal(mean=mean, std=std)
+                    if self.confidence_levels == []:
+                        # discriminator loop
+                        for n in range(self.discriminator_steps):
+                            fakez = torch.normal(mean=mean, std=std)
 
-                        condvec = self.cond_generator.sample(self.batch_size)
-                        if condvec is None:
-                            c1, m1, col, opt = None, None, None, None
-                            real = data_sampler.sample(self.batch_size, col, opt)
-                        else:
-                            c1, m1, col, opt = condvec
-                            c1 = torch.from_numpy(c1).to(self.device)
-                            m1 = torch.from_numpy(m1).to(self.device)
-                            fakez = torch.cat([fakez, c1], dim=1)
+                            condvec = self.cond_generator.sample(self.batch_size)
+                            if condvec is None:
+                                c1, m1, col, opt = None, None, None, None
+                                real = data_sampler.sample(self.batch_size, col, opt)
+                            else:
+                                c1, m1, col, opt = condvec
+                                c1 = torch.from_numpy(c1).to(self.device)
+                                m1 = torch.from_numpy(m1).to(self.device)
+                                fakez = torch.cat([fakez, c1], dim=1)
 
-                            perm = np.arange(self.batch_size)
-                            np.random.shuffle(perm)
-                            real = data_sampler.sample(
-                                self.batch_size, col[perm], opt[perm]
+                                perm = np.arange(self.batch_size)
+                                np.random.shuffle(perm)
+                                real = data_sampler.sample(
+                                    self.batch_size, col[perm], opt[perm]
+                                )
+                                c2 = c1[perm]
+
+                            fake = self.generator(fakez)
+                            fakeact = self._apply_activate(fake)
+
+                            real = torch.from_numpy(real.astype("float32")).to(self.device)
+
+                            if c1 is not None:
+                                fake_cat = torch.cat([fakeact, c1], dim=1)
+                                real_cat = torch.cat([real, c2], dim=1)
+                            else:
+                                real_cat = real
+                                fake_cat = fake
+
+                            y_fake = self.discriminator(fake_cat)
+                            y_real = self.discriminator(real_cat)
+
+                            pen = self.discriminator.calc_gradient_penalty(
+                                real_cat, fake_cat, self.device
                             )
-                            c2 = c1[perm]
+                            loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
 
-                        fake = self.generator(fakez)
-                        fakeact = self._apply_activate(fake)
+                            if self.confidence_levels == []:  # without bb loss
+                                self.optimizerD.zero_grad()
+                                pen.backward(retain_graph=True)
+                                loss_d.backward()
+                                self.optimizerD.step()
 
-                        real = torch.from_numpy(real.astype("float32")).to(self.device)
+                    fakez = torch.normal(mean=mean, std=std)
+                    condvec = self.cond_generator.sample(self.batch_size)
 
-                        if c1 is not None:
-                            fake_cat = torch.cat([fakeact, c1], dim=1)
-                            real_cat = torch.cat([real, c2], dim=1)
-                        else:
-                            real_cat = real
-                            fake_cat = fake
+                    if condvec is None:
+                        c1, m1, col, opt = None, None, None, None
+                    else:
+                        c1, m1, col, opt = condvec
+                        c1 = torch.from_numpy(c1).to(self.device)
+                        m1 = torch.from_numpy(m1).to(self.device)
+                        fakez = torch.cat([fakez, c1], dim=1)
 
-                        y_fake = self.discriminator(fake_cat)
-                        y_real = self.discriminator(real_cat)
+                    fake = self.generator(fakez)
+                    fakeact = self._apply_activate(fake)
 
-                        pen = self.discriminator.calc_gradient_penalty(
-                            real_cat, fake_cat, self.device
-                        )
-                        loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
+                    if c1 is not None:
+                        y_fake = self.discriminator(torch.cat([fakeact, c1], dim=1))
+                    else:
+                        y_fake = self.discriminator(fakeact)
 
-                        if self.confidence_level == -1:  # without bb loss
-                            self.optimizerD.zero_grad()
-                            pen.backward(retain_graph=True)
-                            loss_d.backward()
-                            self.optimizerD.step()
+                    if condvec is None:
+                        cross_entropy = 0
+                    else:
+                        cross_entropy = self._cond_loss(fake, c1, m1)
 
-                fakez = torch.normal(mean=mean, std=std)
-                condvec = self.cond_generator.sample(self.batch_size)
+                    if self.confidence_levels != []:
+                        # generate `batch_size` samples
+                        gen_out = self.sample(self.batch_size)
+                        loss_bb = self._calc_bb_confidence_loss(gen_out,current_conf_level) #send specific confidence to loss computation
+                        loss_g = loss_bb + cross_entropy
+                    else:  # original loss
+                        loss_g = -torch.mean(y_fake) + cross_entropy
 
-                if condvec is None:
-                    c1, m1, col, opt = None, None, None, None
-                else:
-                    c1, m1, col, opt = condvec
-                    c1 = torch.from_numpy(c1).to(self.device)
-                    m1 = torch.from_numpy(m1).to(self.device)
-                    fakez = torch.cat([fakez, c1], dim=1)
+                    self.optimizerG.zero_grad()
+                    loss_g.backward()
+                    self.optimizerG.step()
 
-                fake = self.generator(fakez)
-                fakeact = self._apply_activate(fake)
+                loss_g_val = loss_g.detach().cpu()
+                loss_other_val = locals()[loss_other_name].detach().cpu()
+                history["loss_g"].append(loss_g.item())
+                history[loss_other_name].append(loss_other_val.item())
 
-                if c1 is not None:
-                    y_fake = self.discriminator(torch.cat([fakeact, c1], dim=1))
-                else:
-                    y_fake = self.discriminator(fakeact)
+                if verbose:
+                    print(
+                        f"Epoch {self.trained_epoches}, Loss G: {loss_g_val}, {loss_other_name}: {loss_other_val}",
+                        flush=True,
+                    )
+            allhist["confidence_levels_history"].append(history)
 
-                if condvec is None:
-                    cross_entropy = 0
-                else:
-                    cross_entropy = self._cond_loss(fake, c1, m1)
-
-                if self.confidence_level != -1:
-                    # generate `batch_size` samples
-                    gen_out = self.sample(self.batch_size)
-                    loss_bb = self._calc_bb_confidence_loss(gen_out)
-                    loss_g = loss_bb + cross_entropy
-                else:  # original loss
-                    loss_g = -torch.mean(y_fake) + cross_entropy
-
-                self.optimizerG.zero_grad()
-                loss_g.backward()
-                self.optimizerG.step()
-
-            loss_g_val = loss_g.detach().cpu()
-            loss_other_val = locals()[loss_other_name].detach().cpu()
-            history["loss_g"].append(loss_g.item())
-            history[loss_other_name].append(loss_other_val.item())
-
-            if verbose:
-                print(
-                    f"Epoch {self.trained_epoches}, Loss G: {loss_g_val}, {loss_other_name}: {loss_other_val}",
-                    flush=True,
-                )
-
-        return history
+        return allhist
 
     def sample(self, n, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
@@ -422,16 +430,16 @@ class CTGANSynthesizer(object):
         model.discriminator.to(model.device)
         return model
 
-    def _calc_bb_confidence_loss(self, gen_out):
-
+    def _calc_bb_confidence_loss(self, gen_out,conf_level):
+        #added specific conf level as input arguement
         y_prob = self.blackbox_model.predict_proba(gen_out)
         y_conf_gen = y_prob[:, 0]  # confidence scores
 
         # create vector with the same size of y_confidence filled with `confidence_level` values
-        if isinstance(self.confidence_level, list):
-            conf = np.random.choice(self.confidence_level)
+        if isinstance(conf_level, list):
+            conf = np.random.choice(conf_level)
         else:
-            conf = self.confidence_level
+            conf = conf_level
         y_conf_wanted = np.full(len(y_conf_gen), conf)
 
         # to tensor
