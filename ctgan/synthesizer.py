@@ -322,7 +322,7 @@ class CTGANSynthesizer(object):
 
                     if self.confidence_levels != []:
                         # generate `batch_size` samples
-                        gen_out = self.sample(self.batch_size)
+                        gen_out = self.sample(self.batch_size,current_conf_level)
                         loss_bb = self._calc_bb_confidence_loss(gen_out,current_conf_level) #send specific confidence to loss computation
                         loss_g = loss_bb + cross_entropy
                     else:  # original loss
@@ -346,7 +346,7 @@ class CTGANSynthesizer(object):
 
         return allhist
 
-    def sample(self, n, condition_column=None, condition_value=None):
+    def sample(self, n,confidence_level, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
 
         Choosing a condition_column and condition_value will increase the probability of the
@@ -380,9 +380,16 @@ class CTGANSynthesizer(object):
         steps = n // self.batch_size + 1
         data = []
         for i in range(steps):
-            mean = torch.zeros(self.batch_size, self.embedding_dim)
+            #check if it is okay decrease noise by one for adding conf
+            #add conf ass input to sample function, as number
+            mean = torch.zeros(((self.batch_size*self.embedding_dim)-1))
             std = mean + 1
             fakez = torch.normal(mean=mean, std=std).to(self.device)
+            #fakez = torch.reshape(fakez,(-1,))
+            confidence_level = confidence_level.astype(np.float32)#generator excpect float
+            conf = torch.tensor([confidence_level])#change conf to conf input that will sent!!
+            fakez = torch.cat([fakez, conf], dim=0)
+            fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
 
             if global_condition_vec is not None:
                 condvec = global_condition_vec.copy()
@@ -396,6 +403,8 @@ class CTGANSynthesizer(object):
                 c1 = torch.from_numpy(c1).to(self.device)
                 fakez = torch.cat([fakez, c1], dim=1)
 
+            #conftens = torch.tensor([0.5]);
+            #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
             fake = self.generator(fakez)
             fakeact = self._apply_activate(fake)
             data.append(fakeact.detach().cpu().numpy())
