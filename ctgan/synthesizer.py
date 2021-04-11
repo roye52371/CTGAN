@@ -231,7 +231,8 @@ class CTGANSynthesizer(object):
         assert self.batch_size % 2 == 0
 
         # init mean to zero and std to one
-        mean = torch.zeros(self.batch_size, self.embedding_dim, device=self.device)
+        #keep one spot to confidence level, which will be add after normal dis will
+        mean = torch.zeros(((self.batch_size * self.embedding_dim) - 1), device=self.device)
         std = mean + 1
 
         # steps_per_epoch = max(len(train_data) // self.batch_size, 1)
@@ -247,7 +248,8 @@ class CTGANSynthesizer(object):
             for i in range(epochs):
                 self.trained_epoches += 1
                 for id_ in range(steps_per_epoch):
-
+                    #we examine confidence lelvel so no need parts which they does not show up
+                    """
                     if self.confidence_levels == []:
                         # discriminator loop
                         for n in range(self.discriminator_steps):
@@ -295,8 +297,22 @@ class CTGANSynthesizer(object):
                                 pen.backward(retain_graph=True)
                                 loss_d.backward()
                                 self.optimizerD.step()
+                    """
+                    # we examine confidence lelvel so no need parts which they does not show up
+                    #as above(no confidence and uses discriminator, no need)
 
                     fakez = torch.normal(mean=mean, std=std)
+                    #added here the part of adding conf to sample
+                    #not sure why we need this part in the code but debug shows it this usses this lines
+                    #ask gilad eli
+                    confi = current_conf_level.astype(
+                        np.float32)  # generator excpect float
+                    conf = torch.tensor(
+                        [confi])  # change conf to conf input that will sent!!
+                    fakez = torch.cat([fakez, conf], dim=0)
+                    fakez = torch.reshape(fakez, (self.batch_size, self.embedding_dim))
+                    #end added here the part of adding conf to sample
+
                     condvec = self.cond_generator.sample(self.batch_size)
 
                     if condvec is None:
