@@ -206,15 +206,22 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
     similarity_thresholds = [0.8, 0.85, 0.9, 0.95, 0.99]
     conf_diff_thresholds = [0.01, 0.05, 0.1, 0.15, 0.2]
     data = defaultdict(list)
+    data2 = defaultdict(list)
+    data3 = defaultdict(list)
     
     for sim_threshold in similarity_thresholds:
         for conf_diff_threshold in conf_diff_thresholds:
             coverage = calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
             precision = calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
             data[sim_threshold].append(f"{coverage} | {precision}")
+            data2[sim_threshold].append(coverage)
+            data3[sim_threshold].append(precision)
 
     results = pd.DataFrame.from_dict(data, orient='index', columns=conf_diff_thresholds)
-    return results
+    coverage= pd.DataFrame.from_dict(data2, orient='index', columns=conf_diff_thresholds)
+    precision = pd.DataFrame.from_dict(data3, orient='index', columns=conf_diff_thresholds)
+    return results, coverage, precision
+    
 
 
 def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
