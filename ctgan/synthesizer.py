@@ -308,7 +308,7 @@ class CTGANSynthesizer(object):
                     confi = current_conf_level.astype(
                         np.float32)  # generator excpect float
                     conf = torch.tensor(
-                        [confi])  # change conf to conf input that will sent!!
+                        [confi]).to(self.device)  # change conf to conf input that will sent!!
                     fakez = torch.cat([fakez, conf], dim=0)
                     fakez = torch.reshape(fakez, (self.batch_size, self.embedding_dim))
                     #end added here the part of adding conf to sample
@@ -403,7 +403,7 @@ class CTGANSynthesizer(object):
             fakez = torch.normal(mean=mean, std=std).to(self.device)
             #fakez = torch.reshape(fakez,(-1,))
             confidence_level = confidence_level.astype(np.float32)#generator excpect float
-            conf = torch.tensor([confidence_level])#change conf to conf input that will sent!!
+            conf = torch.tensor([confidence_level]).to(self.device)#change conf to conf input that will sent!!
             fakez = torch.cat([fakez, conf], dim=0)
             fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
 
