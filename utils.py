@@ -115,8 +115,12 @@ def calc_similarities(gen_data_above_c, X_train):
 
 def plot_confidence_levels(y_conf_gen, fig_title):
     counts = pd.value_counts(y_conf_gen, bins=10, sort=False)
+    #print("count\n")
+    #print(counts)
     plt.figure()
     ax = counts.plot.bar(rot=0, grid=True, color="#607c8e", figsize=(15, 5))
+    #print("ax\n")
+    #print(ax)
     ax.set_xticklabels([str(interval) for interval in counts.index], fontsize=11)
     ax.set_ylabel("Frequency", fontsize=15)
 
@@ -164,7 +168,7 @@ def read_data(data_name, data=None):
 
 def calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train):
     count = 0
-    
+
     for index, row in X_train.iterrows():
         row_np = row.to_numpy().reshape(1, -1)
         # row_np.shape = (1, D)
@@ -173,7 +177,7 @@ def calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_
         ind = np.nonzero(d_cosine >= sim_threshold)[0]
         if len(ind) == 0: # no samples with similarity greater then sim_threshold
             continue
-        
+
         conf_diff = y_conf_gen[ind] - y_conf_train[ind]
         if np.any(np.abs(conf_diff) <= conf_diff_threshold):
             count += 1
@@ -184,7 +188,7 @@ def calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_
 
 def calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train):
     count = 0
-    
+
     for index, row in gen_data.iterrows():
         row_np = row.to_numpy().reshape(1, -1)
         # row_np.shape = (1, D)
@@ -193,14 +197,14 @@ def calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf
         ind = np.nonzero(d_cosine >= sim_threshold)[0]
         if len(ind) == 0: # no samples with similarity greater then sim_threshold
             continue
-        
+
         conf_diff = y_conf_gen[ind] - y_conf_train[ind]
         if np.any(np.abs(conf_diff) <= conf_diff_threshold):
             count += 1
 
     precision = (count / gen_data.shape[0]) * 100
     return round(precision, 4)
-    
+
 
 def table(gen_data, X_train, y_conf_gen, y_conf_train):
     similarity_thresholds = [0.8, 0.85, 0.9, 0.95, 0.99]
@@ -208,7 +212,7 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
     data = defaultdict(list)
     data2 = defaultdict(list)
     data3 = defaultdict(list)
-    
+
     for sim_threshold in similarity_thresholds:
         for conf_diff_threshold in conf_diff_thresholds:
             coverage = calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
@@ -221,7 +225,7 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
     coverage= pd.DataFrame.from_dict(data2, orient='index', columns=conf_diff_thresholds)
     precision = pd.DataFrame.from_dict(data3, orient='index', columns=conf_diff_thresholds)
     return results, coverage, precision
-    
+
 
 
 def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
@@ -240,12 +244,12 @@ def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
 
         # value not fould (empty list of indices)
         if len(interval_idx) == 0:
-            continue 
+            continue
 
         # check if the bucket is not full
         interval_idx = interval_idx[0]
         if freqs[interval_idx] > 0:
             ans.append(sample_idx)
-            freqs[interval_idx] -= 1 
-            
+            freqs[interval_idx] -= 1
+
     return ans
