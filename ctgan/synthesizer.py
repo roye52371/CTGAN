@@ -338,14 +338,33 @@ class CTGANSynthesizer(object):
 
                     if self.confidence_levels != []:
                         # generate `batch_size` samples
+                        #samples of fit using yBB in its input
+                        #apply generator twice
                         gen_out = self.sample(self.batch_size,current_conf_level)
                         loss_bb = self._calc_bb_confidence_loss(gen_out,current_conf_level) #send specific confidence to loss computation
+                        #return conf bit vector input and bb_y_vec input bit
+                        """
+                        #new code
+                        conf , bb_y = self.fit_sample(self.batch_size,current_conf_level)
+                        #get loss function
+                        bb_loss = self._get_loss_by_name(self.bb_loss)
+                        #compute simple loss regression
+                        #using conf and bb_y_vector
+                        #ask gilad if c first then bb_y or opposite
+                        loss_bb = bb_loss(bb_y,conf)
+                        #end new code fit
+                        """
+
                         loss_g = loss_bb + cross_entropy
                     else:  # original loss
                         loss_g = -torch.mean(y_fake) + cross_entropy
 
                     self.optimizerG.zero_grad()
                     loss_g.backward()
+                    """
+                    for p in self.generator.parameters():
+                        print(p.grad)
+                    """
                     self.optimizerG.step()
 
                 loss_g_val = loss_g.detach().cpu()
@@ -362,7 +381,11 @@ class CTGANSynthesizer(object):
 
         return allhist
 
-    def sample(self, n,confidence_level, condition_column=None, condition_value=None):
+    #special sample for fit/train part
+    #extra bit added to input as y,apply gen twice
+    #in second time with ybb after sent gen_out if first apply generator
+    #first time with y zero bit second time with bb conf bit
+    def fit_sample(self, n,confidence_level, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
 
         Choosing a condition_column and condition_value will increase the probability of the
@@ -380,7 +403,171 @@ class CTGANSynthesizer(object):
         Returns:
             numpy.ndarray or pandas.DataFrame
         """
+        if condition_column is not None and condition_value is not None:
+            condition_info = self.transformer.covert_column_name_value_to_id(
+                condition_column, condition_value
+            )
+            global_condition_vec = (
+                self.cond_generator.generate_cond_from_condition_column_info(
+                    condition_info, self.batch_size
+                )
+            )
+        else:
+            global_condition_vec = None
 
+        steps = n // self.batch_size + 1
+        data = []
+        gen_input_layer= self.generator.seq[0].fc#get linearinpputlayer
+
+        #now first sample part need to be
+        #with out not gradients updates
+        #so for all first part we do:
+        with torch.no_grad():
+
+            for i in range(steps):
+                #check if it is okay decrease noise by one for adding conf
+                #add conf ass input to sample function, as number vector
+                #give one vector place to adding y to gen noise
+                mean = torch.zeros(self.batch_size,(self.embedding_dim-2))
+                std = mean + 1
+                fakez = torch.normal(mean=mean, std=std).to(self.device)
+                #fakez = torch.reshape(fakez,(-1,))
+                confidence_level = confidence_level.astype(np.float32)#generator excpect float
+                    #create C column vector of confidence level C
+                conf = torch.zeros(self.batch_size,1) + confidence_level
+                conf = conf.to(self.device)#change conf to conf input that will sent!!
+
+
+                #first sample will geet zero as y column vector
+                yzero = torch.zeros(self.batch_size,1).to(self.device)
+
+                #adding y bit to fakez gen noise,generator input
+                fakez = torch.cat([fakez, conf,yzero], dim=1)
+                fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
+
+                if global_condition_vec is not None:
+                    condvec = global_condition_vec.copy()
+                else:
+                    condvec = self.cond_generator.sample_zero(self.batch_size)
+
+                if condvec is None:
+                    pass
+                else:
+                    c1 = condvec
+                    c1 = torch.from_numpy(c1).to(self.device)
+                    fakez = torch.cat([fakez, c1], dim=1)
+
+                #conftens = torch.tensor([0.5]);
+                #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
+
+                #reset to zero weights of y_zero and his bias
+                gen_input_layer.weight[-1]=0
+                #-1 is last line, where I considered yzero weights to be
+                #which contains all weights of last bit of input
+                gen_input_layer.bias[-1]=0
+                #-1 is last bias,where I considered yzero weights to be
+                #in biases vector which contain the bias of last bit
+
+                fake = self.generator(fakez)
+                fakeact = self._apply_activate(fake)
+                data.append(fakeact.detach().cpu().numpy())
+
+            data = np.concatenate(data, axis=0)
+            data = data[:n]
+            # instead of return data
+            # we will use it here to give it to BB and get new conf y
+            gen_out= self.transformer.inverse_transform(data, None)
+
+            y_prob_for_y_zero = self.blackbox_model.predict_proba(gen_out)
+            y_conf_gen_for_y_zero = y_prob_for_y_zero[:, 0].astype(np.float32)
+
+        #now we use this y conf and put it as y bit instead 0 and sample normally
+
+        #######
+        #second part of samples with BB y conf bit
+        #######
+
+
+        if condition_column is not None and condition_value is not None:
+            condition_info = self.transformer.covert_column_name_value_to_id(
+                condition_column, condition_value
+            )
+            global_condition_vec = (
+                self.cond_generator.generate_cond_from_condition_column_info(
+                    condition_info, self.batch_size
+                )
+            )
+        else:
+            global_condition_vec = None
+
+        steps = n // self.batch_size + 1
+        data = []
+        for i in range(steps):
+            #check if it is okay decrease noise by one for adding conf
+            #add conf ass input to sample function, as vector cloumn
+            #decrease by one more for y vec (-2 for y bit a conf level in input)
+            mean = torch.zeros(self.batch_size,(self.embedding_dim-2))
+            std = mean + 1
+            fakez = torch.normal(mean=mean, std=std).to(self.device)
+            #fakez = torch.reshape(fakez,(-1,))
+            confidence_level = confidence_level.astype(np.float32)#generator excpect float
+            #conf = torch.tensor([confidence_level],requires_grad=True).to(self.device)#change conf to conf input that will sent!!
+            conf = torch.zeros(self.batch_size,1) + confidence_level
+            #conf is target in BBCE loss function
+            #target ccant have grdient descent True for some reason
+            #conf.requires_grad = True
+            conf.to(self.device)
+
+
+            #fix y bb bit
+            #y_conf_gen_for_y_zero = y_conf_gen_for_y_zero.astype(np.float32)#generator
+            #y_BB_bit=torch.tensor([y_conf_gen_for_y_zero], requires_grad=True).to(self.device)
+            #y_BB_column = torch.zeros(self.batch_size,1) + y_conf_gen_for_y_zero
+            y_BB_column = torch.tensor([y_conf_gen_for_y_zero], requires_grad=True).to(self.device)
+            #y_BB_column.requires_grad = True
+            #take Transpose because shape is 1*50 - need 50*1
+            y_BB_column = y_BB_column.T
+            y_BB_column.to(self.device)
+
+
+            #put y_bb bit in fakez gen noise ,generator input
+            fakez = torch.cat([fakez, conf,y_BB_column], dim=1)
+            fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
+            #fakez = fakez.astype(np.float32)
+
+            if global_condition_vec is not None:
+                condvec = global_condition_vec.copy()
+            else:
+                condvec = self.cond_generator.sample_zero(self.batch_size)
+
+            if condvec is None:
+                pass
+            else:
+                c1 = condvec
+                c1 = torch.from_numpy(c1).to(self.device)
+                fakez = torch.cat([fakez, c1], dim=1)
+
+            #conftens = torch.tensor([0.5]);
+            #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
+
+            #turn on input gradient
+            #fakez.requires_grad = True
+            #turn on inputs gradient
+
+            fake = self.generator(fakez)
+            fakeact = self._apply_activate(fake)
+            data.append(fakeact.detach().cpu().numpy())
+
+        data = np.concatenate(data, axis=0)
+        data = data[:n]
+        # return data
+        #return self.transformer.inverse_transform(data, None)
+        gen_out = self.transformer.inverse_transform(data, None)
+        #ret conf level vector and bb_y_vector
+        #check if return the below written or above written
+        return conf, y_BB_column
+
+        """
         if condition_column is not None and condition_value is not None:
             condition_info = self.transformer.covert_column_name_value_to_id(
                 condition_column, condition_value
@@ -429,6 +616,80 @@ class CTGANSynthesizer(object):
         data = data[:n]
         # return data
         return self.transformer.inverse_transform(data, None)
+        """
+    #normal sample for creating in the expirements(with no train)
+    def sample(self, n,confidence_level, condition_column=None, condition_value=None):
+        """Sample data similar to the training data.
+
+        Choosing a condition_column and condition_value will increase the probability of the
+        discrete condition_value happening in the condition_column.
+
+        Args:
+            n (int):
+                Number of rows to sample.
+            condition_column (string):
+                Name of a discrete column.
+            condition_value (string):
+                Name of the category in the condition_column which we wish to increase the
+                probability of happening.
+
+        Returns:
+            numpy.ndarray or pandas.DataFrame
+        """
+
+
+        if condition_column is not None and condition_value is not None:
+            condition_info = self.transformer.covert_column_name_value_to_id(
+                condition_column, condition_value
+            )
+            global_condition_vec = (
+                self.cond_generator.generate_cond_from_condition_column_info(
+                    condition_info, self.batch_size
+                )
+            )
+        else:
+            global_condition_vec = None
+
+        steps = n // self.batch_size + 1
+        data = []
+        for i in range(steps):
+            #check if it is okay decrease noise by one for adding conf
+            #add conf ass input to sample function, as number vector column
+            mean = torch.zeros(self.batch_size,(self.embedding_dim-1))
+            std = mean + 1
+            fakez = torch.normal(mean=mean, std=std).to(self.device)
+            #fakez = torch.reshape(fakez,(-1,))
+            confidence_level = confidence_level.astype(np.float32)#generator excpect float
+            #create C column vector of confidence level C
+            conf = torch.zeros(self.batch_size,1) + confidence_level
+            conf = conf.to(self.device)#change conf to conf input that will sent!!
+            fakez = torch.cat([fakez, conf], dim=1)
+            fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
+
+            if global_condition_vec is not None:
+                condvec = global_condition_vec.copy()
+            else:
+                condvec = self.cond_generator.sample_zero(self.batch_size)
+
+            if condvec is None:
+                pass
+            else:
+                c1 = condvec
+                c1 = torch.from_numpy(c1).to(self.device)
+                fakez = torch.cat([fakez, c1], dim=1)
+
+            #conftens = torch.tensor([0.5]);
+            #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
+            fake = self.generator(fakez)
+            fakeact = self._apply_activate(fake)
+            data.append(fakeact.detach().cpu().numpy())
+
+        data = np.concatenate(data, axis=0)
+        data = data[:n]
+        # return data
+        return self.transformer.inverse_transform(data, None)
+
+
 
     def save(self, path):
         assert hasattr(self, "generator")
