@@ -230,7 +230,7 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
 
 def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
     """
-    generate samples until you have the same number of samples as those
+    generate samples until ..you have the same number of samples as those
     of the training set and in the same confidence distribution
     """
     train_bucktes = pd.value_counts(y_conf_train, bins=10, sort=False)
