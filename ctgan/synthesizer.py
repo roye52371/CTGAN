@@ -16,13 +16,10 @@ from ctgan.transformer import DataTransformer
 
 class CTGANSynthesizer(object):
     """Conditional Table GAN Synthesizer.
-
     This is the core class of the CTGAN project, where the different components
     are orchestrated together.
-
     For more details about the process, please check the [Modeling Tabular data using
     Conditional GAN](https://arxiv.org/abs/1907.00503) paper.
-
     Args:
         embedding_dim (int):
             Size of the random sample passed to the Generator. Defaults to 128.
@@ -81,10 +78,8 @@ class CTGANSynthesizer(object):
     @staticmethod
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
         """Deals with the instability of the gumbel_softmax for older versions of torch.
-
         For more details about the issue:
         https://drive.google.com/file/d/1AA5wPfZ1kquaRtVruCd6BiYZGcDeNxyP/view?usp=sharing
-
         Args:
             logits:
                 […, num_features] unnormalized log probabilities
@@ -95,7 +90,6 @@ class CTGANSynthesizer(object):
                 but will be differentiated as if it is the soft sample in autograd
             dim (int):
                 a dimension along which softmax will be computed. Default: -1.
-
         Returns:
             Sampled tensor of same shape as logits from the Gumbel-Softmax distribution.
         """
@@ -172,7 +166,6 @@ class CTGANSynthesizer(object):
         gen_lr=2e-4,
     ):
         """Fit the CTGAN Synthesizer models to the training data.
-
         Args:
             train_data (numpy.ndarray or pandas.DataFrame):
                 Training Data. It must be a 2-dimensional numpy array or a
@@ -209,12 +202,20 @@ class CTGANSynthesizer(object):
             self.generator = Generator(
                 self.embedding_dim + self.cond_generator.n_opt, self.gen_dim, data_dim
             ).to(self.device)
-
+        #print(data_dim)
+        #print(self.cond_generator.n_opt)
+        
         if not hasattr(self, "discriminator"):
             self.discriminator = Discriminator(
                 data_dim + self.cond_generator.n_opt, self.dis_dim
             ).to(self.device)
-
+        """
+        #after sample in fit gen_output is 120 not 80(cause gen allmost twice)
+        if not hasattr(self, "discriminator"):
+            self.discriminator = Discriminator(
+                24 + self.cond_generator.n_opt, self.dis_dim
+            ).to(self.device)
+        """
         if not hasattr(self, "optimizerG"):
             self.optimizerG = optim.Adam(
                 self.generator.parameters(),
@@ -254,7 +255,6 @@ class CTGANSynthesizer(object):
                         # discriminator loop
                         for n in range(self.discriminator_steps):
                             fakez = torch.normal(mean=mean, std=std)
-
                             condvec = self.cond_generator.sample(self.batch_size)
                             if condvec is None:
                                 c1, m1, col, opt = None, None, None, None
@@ -264,34 +264,27 @@ class CTGANSynthesizer(object):
                                 c1 = torch.from_numpy(c1).to(self.device)
                                 m1 = torch.from_numpy(m1).to(self.device)
                                 fakez = torch.cat([fakez, c1], dim=1)
-
                                 perm = np.arange(self.batch_size)
                                 np.random.shuffle(perm)
                                 real = data_sampler.sample(
                                     self.batch_size, col[perm], opt[perm]
                                 )
                                 c2 = c1[perm]
-
                             fake = self.generator(fakez)
                             fakeact = self._apply_activate(fake)
-
                             real = torch.from_numpy(real.astype("float32")).to(self.device)
-
                             if c1 is not None:
                                 fake_cat = torch.cat([fakeact, c1], dim=1)
                                 real_cat = torch.cat([real, c2], dim=1)
                             else:
                                 real_cat = real
                                 fake_cat = fake
-
                             y_fake = self.discriminator(fake_cat)
                             y_real = self.discriminator(real_cat)
-
                             pen = self.discriminator.calc_gradient_penalty(
                                 real_cat, fake_cat, self.device
                             )
                             loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
-
                             if self.confidence_levels == []:  # without bb loss
                                 self.optimizerD.zero_grad()
                                 pen.backward(retain_graph=True)
@@ -325,47 +318,74 @@ class CTGANSynthesizer(object):
 
                     fake = self.generator(fakez)
                     fakeact = self._apply_activate(fake)
-
+                    #changed Discrim size for later use
+                    #so put the useless use here in comment
+                    #because it want other size(data_dim)
+                    #and make errors
+                    
                     if c1 is not None:
                         y_fake = self.discriminator(torch.cat([fakeact, c1], dim=1))
                     else:
                         y_fake = self.discriminator(fakeact)
-
+                    
                     if condvec is None:
                         cross_entropy = 0
+                       
                     else:
                         cross_entropy = self._cond_loss(fake, c1, m1)
-
+                    
                     if self.confidence_levels != []:
                         # generate `batch_size` samples
                         #samples of fit using yBB in its input
                         #apply generator twice
-                        gen_out = self.sample(self.batch_size,current_conf_level)
+                        gen_out,gen_fakeacts =self.sample(self.batch_size,current_conf_level)
+                        
+                        """
+                        gen_out=fakeact.detach().cpu().numpy()
+                        gen_out=self.transformer.inverse_transform(gen_out, None)
+                        """
+                        
                         loss_bb = self._calc_bb_confidence_loss(gen_out,current_conf_level) #send specific confidence to loss computation
                         #return conf bit vector input and bb_y_vec input bit
-                        """
-                        #new code
-                        conf , bb_y = self.fit_sample(self.batch_size,current_conf_level)
-                        #get loss function
-                        bb_loss = self._get_loss_by_name(self.bb_loss)
-                        #compute simple loss regression
-                        #using conf and bb_y_vector
-                        #ask gilad if c first then bb_y or opposite
-                        loss_bb = bb_loss(bb_y,conf)
-                        #end new code fit
-                        """
+                        
+                        
+                        #send to discriminate to connect gradient again
+                        y_fake= self.discriminator(gen_fakeacts)
+                        
+                        
+                        
+                        #find mean like in original ctgan
+                        #multiple by small number to get realy small value
+                        y_fake_mean = torch.mean(y_fake)*0.00000000000001
+                        y_fake_mean = y_fake_mean.to(self.device)
+                        
+                        
+                        #change to float because y_fake is float not double
+                        loss_bb=loss_bb.float()
+                        
+                        
+                        #add y_fake_mean to lossg like in origin ctgan
+                        #plus loss_bb
+                        loss_g = -y_fake_mean + loss_bb + cross_entropy
+                        #loss_g = -y_fake_mean + cross_entropy
 
-                        loss_g = loss_bb + cross_entropy
+                    
+                        
                     else:  # original loss
                         loss_g = -torch.mean(y_fake) + cross_entropy
 
                     self.optimizerG.zero_grad()
                     loss_g.backward()
+                    
                     """
+                    print("gradients\n")
                     for p in self.generator.parameters():
                         print(p.grad)
                     """
+                    
                     self.optimizerG.step()
+                    
+                    
 
                 loss_g_val = loss_g.detach().cpu()
                 loss_other_val = locals()[loss_other_name].detach().cpu()
@@ -385,12 +405,12 @@ class CTGANSynthesizer(object):
     #extra bit added to input as y,apply gen twice
     #in second time with ybb after sent gen_out if first apply generator
     #first time with y zero bit second time with bb conf bit
+    
+    #not relevant function for now
     def fit_sample(self, n,confidence_level, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
-
         Choosing a condition_column and condition_value will increase the probability of the
         discrete condition_value happening in the condition_column.
-
         Args:
             n (int):
                 Number of rows to sample.
@@ -399,7 +419,6 @@ class CTGANSynthesizer(object):
             condition_value (string):
                 Name of the category in the condition_column which we wish to increase the
                 probability of happening.
-
         Returns:
             numpy.ndarray or pandas.DataFrame
         """
@@ -567,63 +586,12 @@ class CTGANSynthesizer(object):
         #check if return the below written or above written
         return conf, y_BB_column
 
-        """
-        if condition_column is not None and condition_value is not None:
-            condition_info = self.transformer.covert_column_name_value_to_id(
-                condition_column, condition_value
-            )
-            global_condition_vec = (
-                self.cond_generator.generate_cond_from_condition_column_info(
-                    condition_info, self.batch_size
-                )
-            )
-        else:
-            global_condition_vec = None
-
-        steps = n // self.batch_size + 1
-        data = []
-        for i in range(steps):
-            #check if it is okay decrease noise by one for adding conf
-            #add conf ass input to sample function, as number
-            mean = torch.zeros(((self.batch_size*self.embedding_dim)-1))
-            std = mean + 1
-            fakez = torch.normal(mean=mean, std=std).to(self.device)
-            #fakez = torch.reshape(fakez,(-1,))
-            confidence_level = confidence_level.astype(np.float32)#generator excpect float
-            conf = torch.tensor([confidence_level]).to(self.device)#change conf to conf input that will sent!!
-            fakez = torch.cat([fakez, conf], dim=0)
-            fakez = torch.reshape(fakez,(self.batch_size,self.embedding_dim))
-
-            if global_condition_vec is not None:
-                condvec = global_condition_vec.copy()
-            else:
-                condvec = self.cond_generator.sample_zero(self.batch_size)
-
-            if condvec is None:
-                pass
-            else:
-                c1 = condvec
-                c1 = torch.from_numpy(c1).to(self.device)
-                fakez = torch.cat([fakez, c1], dim=1)
-
-            #conftens = torch.tensor([0.5]);
-            #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
-            fake = self.generator(fakez)
-            fakeact = self._apply_activate(fake)
-            data.append(fakeact.detach().cpu().numpy())
-
-        data = np.concatenate(data, axis=0)
-        data = data[:n]
-        # return data
-        return self.transformer.inverse_transform(data, None)
-        """
+        
     #normal sample for creating in the expirements(with no train)
     def sample(self, n,confidence_level, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
-
         Choosing a condition_column and condition_value will increase the probability of the
         discrete condition_value happening in the condition_column.
-
         Args:
             n (int):
                 Number of rows to sample.
@@ -632,7 +600,6 @@ class CTGANSynthesizer(object):
             condition_value (string):
                 Name of the category in the condition_column which we wish to increase the
                 probability of happening.
-
         Returns:
             numpy.ndarray or pandas.DataFrame
         """
@@ -652,6 +619,7 @@ class CTGANSynthesizer(object):
 
         steps = n // self.batch_size + 1
         data = []
+        our_fackeacts=[]
         for i in range(steps):
             #check if it is okay decrease noise by one for adding conf
             #add conf ass input to sample function, as number vector column
@@ -678,16 +646,22 @@ class CTGANSynthesizer(object):
                 c1 = torch.from_numpy(c1).to(self.device)
                 fakez = torch.cat([fakez, c1], dim=1)
 
-            #conftens = torch.tensor([0.5]);
-            #fakez = torch.cat([fakez, conftens], dim=1)#check to delelte!!
+            
             fake = self.generator(fakez)
+            
             fakeact = self._apply_activate(fake)
+            
+            our_fackeacts.append(fakeact)
             data.append(fakeact.detach().cpu().numpy())
-
+            
+        
+        
         data = np.concatenate(data, axis=0)
+        
         data = data[:n]
-        # return data
-        return self.transformer.inverse_transform(data, None)
+        gen_fakeacts = torch.cat(our_fackeacts,0)
+        
+        return self.transformer.inverse_transform(data, None),gen_fakeacts
 
 
 
