@@ -318,10 +318,7 @@ class CTGANSynthesizer(object):
 
                     fake = self.generator(fakez)
                     fakeact = self._apply_activate(fake)
-                    #changed Discrim size for later use
-                    #so put the useless use here in comment
-                    #because it want other size(data_dim)
-                    #and make errors
+                    
                     
                     if c1 is not None:
                         y_fake = self.discriminator(torch.cat([fakeact, c1], dim=1))
