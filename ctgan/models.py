@@ -36,6 +36,8 @@ class Discriminator(Module):
         self.pack = pack
         self.packdim = dim
         seq = []
+        #print(dis_dims)
+        #print(dis_dims.shape)
         for item in list(dis_dims):
             seq += [Linear(dim, item), LeakyReLU(0.2), Dropout(0.5)]
             dim = item
@@ -46,6 +48,9 @@ class Discriminator(Module):
     def forward(self, input):
         assert input.size()[0] % self.pack == 0
         return self.seq(input.view(-1, self.packdim))
+        #changed to reshape because view does not work
+        #return self.seq(input.reshape(-1, self.packdim))
+
 
 
 class Residual(Module):
