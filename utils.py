@@ -252,4 +252,50 @@ def gen_data_to_same_conf_dist_as_train(y_conf_gen, y_conf_train):
             ans.append(sample_idx)
             freqs[interval_idx] -= 1
 
-    return ans
+    #fixed_y_conf_train=y_conf_train
+    bad_bin_indexes=[]
+    train_samp_not_used=0
+    print("bucket indexes which we didnt find to them enough gen samples\n ")
+    for i in range(len(train_bucktes)):
+        if freqs[i] > 0:
+            print('index {} values left {}\n'.format(i,freqs[i]))
+            bad_bin_indexes.append(i)
+            train_samp_not_used= train_samp_not_used+ freqs[i]
+            #fixed_y_conf_train=  np.delete( fixed_y_conf_train,train_bucktes.values[i])
+    #values_to_delete=[]
+    train_ans=[]
+    inBadBins= False
+    for sample_idx, sample_conf in enumerate(y_conf_train):
+        for j in bad_bin_indexes:
+            #if train data  contain the gen sample
+            #in the bad bins of train so we dont need to take it to train data relevant maatrix
+            if idxs.contains(sample_conf)[j]==True:
+                #values_to_delete.append(sample_conf)
+                #fixed_y_conf_train= np.delete(fixed_y_conf_train,sample_idx)
+                inBadBins = True
+                break
+                #if one of the j's
+        if not inBadBins:
+            train_ans.append(sample_idx)
+
+        #reset flag for next round
+        inBadBins = False
+
+
+    #fixed_y_conf_train= np.delete(y_conf_train,values_to_delete)
+
+    """
+    print("old y_conf_train\n")
+    print(y_conf_train)
+    print("old y_conf_train shape\n")
+    print(y_conf_train.shape)
+    """
+    print('train samples did not had gendata samp in their bin, and therefore not used: {}/{}\n'.format(train_samp_not_used,y_conf_train.size))
+    
+    print("ans\n")
+    print(np.array(ans).shape)
+    print("train_ans\n")
+    print(np.array(train_ans).shape)
+
+
+    return ans,train_ans
