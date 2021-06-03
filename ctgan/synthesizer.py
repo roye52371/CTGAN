@@ -376,10 +376,16 @@ class CTGANSynthesizer(object):
                     
                     """
                     print("gradients\n")
+                    
                     for p in self.generator.parameters():
                         print(p.grad)
                     """
-                    
+                    """
+                    for name, param in self.generator.named_parameters():
+                        #if param.requires_grad:
+                        print(name)
+                        print(param.grad)
+                    """
                     self.optimizerG.step()
                     
                     
