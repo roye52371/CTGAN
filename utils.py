@@ -215,8 +215,13 @@ def table(gen_data, X_train, y_conf_gen, y_conf_train):
 
     for sim_threshold in similarity_thresholds:
         for conf_diff_threshold in conf_diff_thresholds:
+            print('calc for sim_threshold= {} and conf_diff_threshold={}'.format(sim_threshold,conf_diff_threshold))
+            print("enter coverage function\n")
             coverage = calc_coverage(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
+            print("exit coversge function\n")
+            print("enter precision function\n")
             precision = calc_precision(gen_data, X_train, sim_threshold, conf_diff_threshold, y_conf_gen, y_conf_train)
+            print("exit precision function\n")
             data[sim_threshold].append(f"{coverage} | {precision}")
             data2[sim_threshold].append(coverage)
             data3[sim_threshold].append(precision)
